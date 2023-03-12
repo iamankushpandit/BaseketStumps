@@ -1,0 +1,176 @@
+/**
+   Copyright (C) GoodTimes, Inc - All Rights Reserved
+   Unauthorized copying of this file, via any medium is strictly prohibited
+   Proprietary and confidential
+   Written by Ankush Pandit<ankushpanditindia1@gmail.com>, March 2023
+
+   This is written/tested for Arduino NANO 33 IOT board.
+
+   This is written for a game we all love, Baseket!
+
+   This is written for creating a board that immitates the stumps that stand behind the batsman.
+
+   This is the logic that runs on the NANO board to read the x,y,z values
+   infinitly from the Accelerometer/IMU and after reading the value, it compares
+   it to the last known values and if the value is not in the acceptable range,
+   digital pin 12 is send a high and low signals. These signal combined with the
+   ground cable can trigger a flashing bulb.
+*/
+
+#include "thingProperties.h"
+
+#include<FastLED.h>
+
+#define NUM_LEDS 5
+#define LED_STRIP_PIN 12
+
+CRGB leds[NUM_LEDS];
+
+//Include needed for api to read the x,y,z axis value from Accelerometer/IMU.
+#include <Arduino_LSM6DS3.h>
+
+//Global Variables used for comparision.
+float a = -100, b = -100, c = -100;
+
+//Tolerance for the OUT alarm. This values is used for creating a range to compare against the current x,y,z values.
+float TOLERANCE = 0.04;
+
+//The digital output pin
+int OUT_LED = 12;
+
+//The Self Healing or Shelf Reset Feature Flag.
+bool SELF_HEAL = true;
+
+//Self heal/reset Time in seconds.
+int SELF_HEAL_TIME = 10;
+
+void setup() {
+  //Setting up the pin mode.
+  pinMode(OUT_LED, OUTPUT);
+
+  FastLED.addLeds<WS2812B, LED_STRIP_PIN, GRB>(leds, NUM_LEDS);
+  FastLED.setBrightness(10);
+
+  //Setup serial to debug if the IMU is not available.
+  //Serial.begin(9600);
+  // This delay gives the chance to wait for a Serial Monitor without blocking if none is found
+  delay(1500);
+  //Serial.println("Baseket is the best!");
+  //Naughty Naughty.. This line will not let the setup finish until it is connected to a serial port. ;)
+  //while (!Serial);//Turning this off
+
+  // Defined in thingProperties.h
+  initProperties();
+
+  // Connect to Arduino IoT Cloud
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection);
+
+  /*
+     The following function allows you to obtain more information
+     related to the state of network and IoT Cloud connection and errors
+     the higher number the more granular information you’ll get.
+     The default is 0 (only errors).
+     Maximum is 4
+  */
+  setDebugMessageLevel(2);
+  ArduinoCloud.printDebugInfo();
+
+  //Check if the IMU is available.
+  if (!IMU.begin()) {
+    //Serial.println("Failed to initialize Accelerometer/IMU !");
+    digitalWrite(OUT_LED, HIGH);
+    while (1)
+      ;
+  }
+  out = false;
+}
+
+void loop() {
+  ArduinoCloud.update();
+  // Your code here
+
+  float x, y, z;
+
+  //Check if the Acceletation data is available.
+  if (IMU.accelerationAvailable()) {
+    //Read the data in to the x,y,z variables.
+    IMU.readAcceleration(x, y, z);
+
+    //This condition allows to skip checking the out condition on the first run.
+    if (a != -100 && b != -100; c != -100) {
+      //Check if the x,y,z values are not in acceptable range.
+      if (
+        a > x + TOLERANCE || a < x - TOLERANCE
+        || b > y + TOLERANCE || b < y - TOLERANCE
+        || c > z + TOLERANCE || c < z - TOLERANCE) {
+
+        out = true;
+        //Serial.println("Out!");
+        leds[0] = CRGB::Red;
+        leds[1] = CRGB::Green;
+        leds[2] = CRGB::Blue;
+        FastLED.show();
+
+        if (SELF_HEAL) {
+          for (int i = 0; i < SELF_HEAL_TIME / 2; i++) {
+            digitalWrite(OUT_LED, HIGH);
+            delay(500);
+            digitalWrite(OUT_LED, LOW);
+            delay(500);
+          }
+          out = false;
+        } else {
+          //If x,y,z values are not in the acceptable range, send the high, low signal every 200 milliseconds.
+          for (;;) {
+            digitalWrite(OUT_LED, HIGH);
+            delay(200);
+            digitalWrite(OUT_LED, LOW);
+            delay(200);
+          }
+        }
+      }
+    }
+    //Store present x,y,z values for comparision in the next go.
+    a = x;
+    b = y;
+    c = z;
+  }
+
+
+}
+
+/*
+  Since SelfHeal is READ_WRITE variable, onSelfHealChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onSelfHealChange()  {
+  SELF_HEAL = selfHeal;
+}
+/*
+  Since Tolerance is READ_WRITE variable, onToleranceChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onToleranceChange()  {
+  TOLERANCE = tolerance;
+}
+/*
+  Since SelfHealTime is READ_WRITE variable, onSelfHealTimeChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onSelfHealTimeChange()  {
+  SELF_HEAL_TIME = selfHealTime;
+}
+/*
+  Since OutLed is READ_WRITE variable, onOutLedChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onOutLedChange()  {
+  OUT_LED = outLed;
+}
+/*
+  Since Out is READ_WRITE variable, onOutChange() is
+  executed every time a new value is received from IoT Cloud.
+*/
+void onOutChange()  {
+  // Add your code here to act upon Out change
+}
